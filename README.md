@@ -1,4 +1,4 @@
-# Project Name
+# Alzumarud - Emerald
 
 > **Status:** 🚧 Currently in active pre-alpha development.
 
