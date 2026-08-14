@@ -454,3 +454,5 @@ html,body{
   .begin-btn, .swatch{ transition:none; }
   .crafting-result.ready{ animation:none; }
 }
+
+::selection{ background:var(--emerald); color:var(--night-deep); }
