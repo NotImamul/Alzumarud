@@ -1,1 +1,101 @@
-guys be patient
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Alzumarud — Emerald</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600&display=swap&family=Cormorant+Garamond:ital@1&family=Spectral:wght@300;400;500&display=swap&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ============ START SCREEN ============ -->
+<section id="start-screen" class="screen">
+  <div class="stars-bg" aria-hidden="true"></div>
+  <div class="start-inner">
+    <p class="eyebrow">a wandering game</p>
+    <h1 class="title">ALZUMARUD</h1>
+    <p class="subtitle">There is no goal here. Only the walking, and what the light does along the way.</p>
+
+    <div class="customize">
+      <p class="customize-label">choose your wanderer</p>
+      <div class="swatches" id="swatches" role="group" aria-label="Choose character color">
+        <button class="swatch" data-color="#2ee6a6" style="--swatch:#2ee6a6" aria-label="Emerald"></button>
+        <button class="swatch" data-color="#f4d35e" style="--swatch:#f4d35e" aria-label="Amber"></button>
+        <button class="swatch" data-color="#e07a5f" style="--swatch:#e07a5f" aria-label="Clay"></button>
+        <button class="swatch" data-color="#9d8df1" style="--swatch:#9d8df1" aria-label="Violet"></button>
+        <button class="swatch" data-color="#eef2f0" style="--swatch:#eef2f0" aria-label="Bone"></button>
+      </div>
+      <div class="preview-wrap" aria-hidden="true">
+        <canvas id="preview-canvas" width="72" height="72"></canvas>
+      </div>
+    </div>
+
+    <button id="begin-btn" class="begin-btn">Begin Walking</button>
+
+    <div class="controls-hint">
+      <span><em>A</em> <em>D</em> — move</span>
+      <span><em>Space</em> — rise</span>
+      <span><em>Shift</em> — rise again, mid-air</span>
+      <span><em>S</em> — dive</span>
+      <span><em>I</em> — pack</span>
+    </div>
+  </div>
+</section>
+
+<!-- ============ GAME SCREEN ============ -->
+<main id="game-screen" class="screen hidden">
+  <canvas id="game-canvas"></canvas>
+
+  <div class="hud">
+    <div class="hud-item" id="hud-gems">
+      <svg width="14" height="14" viewBox="0 0 14 14"><polygon points="7,0 14,5 11,14 3,14 0,5" fill="var(--emerald)"/></svg>
+      <span id="gem-count">0</span>
+    </div>
+  </div>
+
+  <div class="ambient-text" id="ambient-text"></div>
+
+  <div class="controls-map" aria-hidden="true">
+    <p class="controls-map-title">controls</p>
+    <div class="controls-map-row"><span class="key">A</span><span class="key">D</span><span class="action">move</span></div>
+    <div class="controls-map-row"><span class="key wide">SPACE</span><span class="action">jump</span></div>
+    <div class="controls-map-row"><span class="key wide">SHIFT</span><span class="action">double jump</span></div>
+    <div class="controls-map-row"><span class="key">S</span><span class="action">dive</span></div>
+    <div class="controls-map-row"><span class="key">I</span><span class="action">pack</span></div>
+  </div>
+
+  <!-- ============ INVENTORY / CRAFTING PANEL ============ -->
+  <div id="inventory-panel" class="inventory-panel hidden">
+    <div class="inventory-header">
+      <h2>Your Pack</h2>
+      <button id="close-inventory" aria-label="Close pack">×</button>
+    </div>
+    <div class="inventory-body">
+
+      <div class="pack-section">
+        <p class="section-label">pack</p>
+        <div class="slot-grid" id="pack-grid"></div>
+      </div>
+
+      <div class="crafting-section">
+        <p class="section-label">crafting</p>
+        <div class="crafting-row">
+          <div class="crafting-grid" id="crafting-grid"></div>
+          <div class="crafting-arrow">→</div>
+          <div class="crafting-result slot" id="crafting-result-slot"></div>
+        </div>
+        <p class="crafting-hint" id="crafting-hint">Fill all nine slots with emerald fragments.</p>
+      </div>
+
+      <p class="inv-footnote">Nine fragments, patiently arranged, might still become something whole.</p>
+    </div>
+  </div>
+
+  <button id="menu-return-btn" class="menu-return-btn" aria-label="Return to start">←</button>
+</main>
+
+<script src="script.js"></script>
+</body>
+</html>
