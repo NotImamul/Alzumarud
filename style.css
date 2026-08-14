@@ -456,3 +456,48 @@ html,body{
 }
 
 ::selection{ background:var(--emerald); color:var(--night-deep); }
+
+/* ==============================================
+   Firefox (Standard CSS)
+   ============================================== */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--emerald-dim) var(--night-deep);
+}
+
+/* ==============================================
+   Chrome, Edge, Safari, and Electron (WebKit)
+   ============================================== */
+
+/* 1. Width and height of the scrollbar */
+::-webkit-scrollbar {
+  width: 14px; /* Vertical scrollbar width */
+  height: 14px; /* Horizontal scrollbar height */
+}
+
+/* 2. The track (background) of the scrollbar */
+::-webkit-scrollbar-track {
+  background: var(--night-deep);
+  /* Optional: adds a subtle border to blend with the app background */
+  border-left: 1px solid var(--night); 
+}
+
+/* 3. The draggable handle (thumb) */
+::-webkit-scrollbar-thumb {
+  background-color: var(--emerald-dim);
+  border-radius: 10px;
+  /* The border acts as "padding" around the thumb since WebKit doesn't support margin on scrollbars */
+  border: 3px solid var(--night-deep); 
+  /* Smooth transition for hover */
+  transition: background-color 0.3s ease; 
+}
+
+/* 4. Hover state for the thumb */
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--emerald);
+}
+
+/* 5. The corner where vertical and horizontal scrollbars meet */
+::-webkit-scrollbar-corner {
+  background: var(--night-deep);
+}
