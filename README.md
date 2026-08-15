@@ -1,6 +1,6 @@
 # Alzumarud - Emerald
 
-> **Status:** 🚧 Currently in active pre-alpha development...
+> **Status:** 🚧 Currently in active pre-alpha development.
 
 A web-based 2D adventure game focused entirely on exploration, atmosphere, and movement—not on winning or reaching a finish line. Inspired by games like *Himno - The Silent Melody*, it emphasizes open-ended traversal and peaceful discovery at your own pace.
 
