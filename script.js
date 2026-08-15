@@ -14,6 +14,17 @@ const state = {
 const previewCanvas = document.getElementById("preview-canvas");
 const pctx = previewCanvas.getContext("2d");
 
+// render the avatar preview at full display density instead of a fixed
+// 72x72 backing store stretched (and blurred) up to its 76px CSS size —
+// the drawing code below still works in the same 72x72 logical space
+const PREVIEW_LOGICAL_SIZE = 72;
+const PREVIEW_DPR = Math.min(window.devicePixelRatio || 1, 3);
+previewCanvas.width = PREVIEW_LOGICAL_SIZE * PREVIEW_DPR;
+previewCanvas.height = PREVIEW_LOGICAL_SIZE * PREVIEW_DPR;
+pctx.setTransform(PREVIEW_DPR, 0, 0, PREVIEW_DPR, 0, 0);
+pctx.imageSmoothingEnabled = true;
+pctx.imageSmoothingQuality = "high";
+
 function roundRect(ctx, x, y, w, h, r) {
   ctx.beginPath();
   ctx.moveTo(x + r, y);
@@ -184,16 +195,144 @@ swatchEls.forEach((el, i) => {
   if (i === 0) el.classList.add("active");
 });
 
+/* =========================================================
+   SAVE SYSTEM — a single local save, stored in the browser's
+   localStorage and lightly encrypted so it isn't sitting
+   around as plain readable JSON. This is local obfuscation
+   against casual tampering/snooping, not a security boundary —
+   anyone with access to the browser's storage also has access
+   to the cipher key below.
+   ========================================================= */
+
+const SAVE_KEY = "alzumarud_save_v1";
+const SAVE_CIPHER_KEY = "alzumarud-emerald-wanderer-v1";
+
+function xorCipher(str, key) {
+  let out = "";
+  for (let i = 0; i < str.length; i++) {
+    out += String.fromCharCode(str.charCodeAt(i) ^ key.charCodeAt(i % key.length));
+  }
+  return out;
+}
+
+function encryptSave(obj) {
+  const json = JSON.stringify(obj);
+  const xored = xorCipher(json, SAVE_CIPHER_KEY);
+  return btoa(unescape(encodeURIComponent(xored)));
+}
+
+function decryptSave(encoded) {
+  try {
+    const xored = decodeURIComponent(escape(atob(encoded)));
+    const json = xorCipher(xored, SAVE_CIPHER_KEY);
+    return JSON.parse(json);
+  } catch (e) {
+    return null; // corrupted, tampered with, or from an incompatible version
+  }
+}
+
+function readSave() {
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    return raw ? decryptSave(raw) : null;
+  } catch (e) {
+    console.warn("Could not read save data", e);
+    return null;
+  }
+}
+
+function writeSave(data) {
+  try {
+    localStorage.setItem(SAVE_KEY, encryptSave(data));
+    return true;
+  } catch (e) {
+    console.warn("Could not write save data", e);
+    return false;
+  }
+}
+
+function deleteSave() {
+  try {
+    localStorage.removeItem(SAVE_KEY);
+  } catch (e) {
+    console.warn("Could not delete save data", e);
+  }
+}
+
+function buildSaveData() {
+  return {
+    version: 1,
+    savedAt: Date.now(),
+    playerColor: player ? player.color : state.playerColor,
+    playerX: player ? player.x : SPAWN_X,
+    distanceMax: game.distanceMax,
+    gameTime: game.time,
+    fragmentsHeld: totalOf("emerald_fragment"),
+    enchantedHeld: totalOf("enchanted_emerald"),
+    collectedGemIds: Array.from(collectedGemIds),
+    inventoryPack: inventory.pack,
+    inventoryCrafting: inventory.crafting,
+  };
+}
+
+function saveGame() {
+  const ok = writeSave(buildSaveData());
+  flashSaveButton(ok);
+}
+
+function flashSaveButton(ok) {
+  const btn = document.getElementById("save-game-btn");
+  if (!btn) return;
+  btn.textContent = ok ? "Saved ✓" : "Save Failed";
+  btn.classList.toggle("saved-flash", ok);
+  clearTimeout(flashSaveButton._t);
+  flashSaveButton._t = setTimeout(() => {
+    btn.textContent = "Save Game";
+    btn.classList.remove("saved-flash");
+  }, 1200);
+}
+
+function refreshContinueHint() {
+  const data = readSave();
+  const hintEl = document.getElementById("continue-hint");
+  if (!hintEl) return data;
+  if (data) {
+    const dist = Math.floor(data.distanceMax || 0);
+    hintEl.textContent = `A saved journey awaits — ${dist}m walked, ${data.fragmentsHeld || 0} fragments`;
+    hintEl.classList.add("visible");
+    if (data.playerColor) {
+      state.playerColor = data.playerColor;
+      swatchEls.forEach((s) => s.classList.toggle("active", s.dataset.color === data.playerColor));
+    }
+  } else {
+    hintEl.textContent = "";
+    hintEl.classList.remove("visible");
+  }
+  return data;
+}
+refreshContinueHint();
+
+document.getElementById("reset-data-btn").addEventListener("click", () => {
+  const confirmed = confirm(
+    "This will permanently delete your saved journey from this browser. This cannot be undone. Continue?"
+  );
+  if (!confirmed) return;
+  deleteSave();
+  refreshContinueHint();
+});
+
 document.getElementById("begin-btn").addEventListener("click", () => {
+  const loadData = readSave(); // pick up the freshest save, in case one was just made or reset
   document.getElementById("start-screen").classList.add("hidden");
   document.getElementById("game-screen").classList.remove("hidden");
-  startGame(state.playerColor);
+  startGame(state.playerColor, loadData);
 });
 
 document.getElementById("menu-return-btn").addEventListener("click", () => {
   document.getElementById("game-screen").classList.add("hidden");
   document.getElementById("start-screen").classList.remove("hidden");
   if (game.running) game.running = false;
+  refreshContinueHint(); // reflect anything saved during this session
 });
 
 /* ================= GAME ================= */
@@ -202,18 +341,27 @@ const canvas = document.getElementById("game-canvas");
 const ctx = canvas.getContext("2d");
 
 let W = 0, H = 0;
+let DPR = 1;
 function resize() {
-  W = canvas.width = window.innerWidth * devicePixelRatio;
-  H = canvas.height = window.innerHeight * devicePixelRatio;
+  // clamp to 3x so a very high-density phone/tablet display doesn't tank
+  // performance — desktop displays (1x/1.25x/1.5x/2x) are unaffected, and
+  // this is what makes the canvas render at full native resolution instead
+  // of a blurry, upscaled one
+  DPR = Math.min(window.devicePixelRatio || 1, 3);
+  W = canvas.width = window.innerWidth * DPR;
+  H = canvas.height = window.innerHeight * DPR;
   canvas.style.width = window.innerWidth + "px";
   canvas.style.height = window.innerHeight + "px";
-  ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
 }
 window.addEventListener("resize", resize);
 resize();
 
 const GRAVITY = 1450;
 const MOVE_SPEED = 260;
+const SPRINT_SPEED = 400;
 const JUMP_VELOCITY = 620;
 const DOUBLE_JUMP_VELOCITY = 540;
 const DASH_VELOCITY = 1250;
@@ -225,6 +373,7 @@ const UNLOAD_BUFFER = 1; // extra chunks of hysteresis before unloading, avoids 
 
 const CAMERA_Y_BIAS = 0.58; // fraction down the screen the player rests at vertically
 const CYCLE_PERIOD = 200;   // seconds for a full day-night cycle
+const SPAWN_X = 260;        // the one fixed origin point distance-walked is measured from
 
 /* ---- seeded RNG so a chunk always regenerates identically if revisited ---- */
 function mulberry32(seed) {
@@ -442,7 +591,17 @@ const inventory = {
   crafting: Array.from({ length: 9 }, () => null),
   result: null,
 };
-let selectedSlot = null; // { area: 'pack' | 'crafting', index }
+let selectedSlot = null; // { area: 'pack' | 'crafting', index } — the stack currently "picked up"
+let dragTargets = []; // ordered unique list of "area:index" strings touched during an active split-drag
+let mouseIsDown = false;
+let justDistributed = false; // guards against the native click firing right after a drag ends on its start slot
+
+window.addEventListener("mousedown", () => { mouseIsDown = true; });
+window.addEventListener("mouseup", () => {
+  mouseIsDown = false;
+  if (selectedSlot && dragTargets.length > 0) performDistribution();
+  dragTargets = [];
+});
 
 function addItemToPack(itemId, amount) {
   const def = ITEM_DEFS[itemId];
@@ -485,6 +644,7 @@ function getSlotArray(area) {
 }
 
 function onSlotClick(area, index) {
+  if (justDistributed) { justDistributed = false; return; } // this click is the tail end of a drag, not a real click
   const arr = getSlotArray(area);
   if (!selectedSlot) {
     if (arr[index]) selectedSlot = { area, index };
@@ -501,8 +661,134 @@ function onSlotClick(area, index) {
   renderInventory();
 }
 
+/* Minecraft-style split drag: click a stack to pick it up (selectedSlot),
+   then drag across other slots — every valid slot the pointer crosses
+   while the button is held becomes a target, and releasing the mouse
+   splits the stack as evenly as possible across all of them. */
+function trackDragTarget(area, index) {
+  // mouseIsDown gating happens at the call sites (mousedown fires before the
+  // global mouseIsDown flag updates, since bubbling reaches window last —
+  // checking it here would drop the very first slot touched in a drag)
+  if (!selectedSlot) return;
+  if (area === selectedSlot.area && index === selectedSlot.index) return; // can't target the source itself
+
+  const sourceArr = getSlotArray(selectedSlot.area);
+  const source = sourceArr[selectedSlot.index];
+  if (!source) return;
+  const def = ITEM_DEFS[source.item];
+
+  const targetArr = getSlotArray(area);
+  const target = targetArr[index];
+  if (target && (target.item !== source.item || target.count >= def.maxStack)) return; // not a valid target
+
+  const key = area + ":" + index;
+  if (!dragTargets.includes(key)) {
+    dragTargets.push(key);
+    renderInventory(); // live-highlight the slots queued to receive a share
+  }
+}
+
+function performDistribution() {
+  if (!selectedSlot || dragTargets.length === 0) { dragTargets = []; return; }
+
+  const sourceArr = getSlotArray(selectedSlot.area);
+  const startIndex = selectedSlot.index;
+  const source = sourceArr[startIndex];
+  if (!source) { selectedSlot = null; dragTargets = []; renderInventory(); return; }
+
+  const def = ITEM_DEFS[source.item];
+  const numTargets = dragTargets.length;
+  const base = Math.floor(source.count / numTargets);
+
+  if (base < 1) {
+    // not enough items to give every dragged-over slot at least one — cancel quietly
+    dragTargets = [];
+    justDistributed = true;
+    renderInventory();
+    return;
+  }
+
+  let remainder = source.count - base * numTargets;
+  let totalGiven = 0;
+
+  for (const key of dragTargets) {
+    const sep = key.lastIndexOf(":");
+    const area = key.slice(0, sep);
+    const idx = Number(key.slice(sep + 1));
+    const arr = getSlotArray(area);
+    const target = arr[idx];
+
+    let give = base + (remainder > 0 ? 1 : 0);
+    if (remainder > 0) remainder--;
+
+    if (target) {
+      if (target.item !== source.item) continue;
+      give = Math.min(give, def.maxStack - target.count);
+      target.count += give;
+    } else {
+      give = Math.min(give, def.maxStack);
+      if (give > 0) arr[idx] = { item: source.item, count: give };
+    }
+    totalGiven += give;
+  }
+
+  source.count -= totalGiven;
+  if (source.count <= 0) sourceArr[startIndex] = null;
+
+  selectedSlot = null;
+  dragTargets = [];
+  justDistributed = true;
+  checkCraftingRecipe();
+  renderInventory();
+}
+
+/* Double-click: gather every stack of the same item within the same area
+   (pack or crafting, never crossing between them) into the clicked slot,
+   overflowing into fresh full stacks nearby rather than losing anything. */
+function onSlotDoubleClick(area, index) {
+  const arr = getSlotArray(area);
+  const clicked = arr[index];
+  if (!clicked) return;
+  const def = ITEM_DEFS[clicked.item];
+
+  let total = clicked.count;
+  for (let i = 0; i < arr.length; i++) {
+    if (i === index) continue;
+    const s = arr[i];
+    if (s && s.item === clicked.item) {
+      total += s.count;
+      arr[i] = null;
+    }
+  }
+
+  arr[index] = { item: clicked.item, count: Math.min(total, def.maxStack) };
+  let overflow = total - def.maxStack;
+  let i = 0;
+  while (overflow > 0 && i < arr.length) {
+    if (i !== index && !arr[i]) {
+      const give = Math.min(overflow, def.maxStack);
+      arr[i] = { item: clicked.item, count: give };
+      overflow -= give;
+    }
+    i++;
+  }
+
+  selectedSlot = null;
+  justDistributed = true; // the two clicks inside a dblclick shouldn't also trigger a select/swap
+  checkCraftingRecipe();
+  renderInventory();
+}
+
 function onResultClick() {
   if (!inventory.result) return;
+  const def = ITEM_DEFS[inventory.result.item];
+  // guarantee the pack can actually receive the output before consuming the
+  // nine fragments — otherwise a full pack would destroy them for nothing
+  const hasRoom = inventory.pack.some((s) => !s || (s.item === inventory.result.item && s.count < def.maxStack));
+  if (!hasRoom) {
+    document.getElementById("crafting-hint").textContent = "Your pack is full — make room before crafting.";
+    return;
+  }
   for (let i = 0; i < 9; i++) {
     const s = inventory.crafting[i];
     if (s) {
@@ -513,14 +799,16 @@ function onResultClick() {
   addItemToPack(inventory.result.item, inventory.result.count);
   checkCraftingRecipe();
   renderInventory();
-  updateGemHUD();
+  updateHUD();
 }
 
 function renderSlotGrid(containerEl, arr, area) {
   containerEl.innerHTML = "";
   arr.forEach((slot, i) => {
     const el = document.createElement("div");
-    el.className = "slot" + (selectedSlot && selectedSlot.area === area && selectedSlot.index === i ? " selected" : "");
+    const isSelected = selectedSlot && selectedSlot.area === area && selectedSlot.index === i;
+    const isDragTarget = dragTargets.includes(area + ":" + i);
+    el.className = "slot" + (isSelected ? " selected" : "") + (isDragTarget ? " drag-target" : "");
     if (slot) {
       const def = ITEM_DEFS[slot.item];
       el.title = def.name + (slot.count > 1 ? ` ×${slot.count}` : "");
@@ -536,6 +824,17 @@ function renderSlotGrid(containerEl, arr, area) {
       }
     }
     el.addEventListener("click", () => onSlotClick(area, i));
+    el.addEventListener("dblclick", (ev) => { ev.preventDefault(); onSlotDoubleClick(area, i); });
+    // the first slot touched in a drag is caught here — mouseenter never
+    // fires for the element the pointer was already resting on
+    el.addEventListener("mousedown", (ev) => {
+      if (selectedSlot) ev.preventDefault(); // stop native text/ghost-drag while splitting a stack
+      trackDragTarget(area, i);
+    });
+    // every slot the pointer moves across afterward, while still held down
+    el.addEventListener("mouseenter", () => {
+      if (mouseIsDown) trackDragTarget(area, i);
+    });
     containerEl.appendChild(el);
   });
 }
@@ -562,6 +861,15 @@ function updateCraftingHint() {
 }
 
 function renderInventory() {
+  // a stale selection (e.g. the last unit of a stack was just consumed
+  // elsewhere) would otherwise leave a "selected" outline on an empty slot
+  if (selectedSlot) {
+    const arr = getSlotArray(selectedSlot.area);
+    if (!arr[selectedSlot.index]) {
+      selectedSlot = null;
+      dragTargets = [];
+    }
+  }
   renderSlotGrid(document.getElementById("pack-grid"), inventory.pack, "pack");
   renderSlotGrid(document.getElementById("crafting-grid"), inventory.crafting, "crafting");
   renderResultSlot();
@@ -583,6 +891,7 @@ const collectedGemIds = new Set();
 let player, platforms, trees, gems, fireflies, cameraX, cameraY;
 const keys = {};
 let prevKeys = {};
+let prevLeftShiftHeld = false;
 let particles = [];
 
 function spawnJumpBurst() {
@@ -655,24 +964,35 @@ function drawParticles() {
   ctx.globalAlpha = 1;
 }
 
-function startGame(color) {
+function normalizeSlotArray(arr, size) {
+  return Array.from({ length: size }, (_, i) => (arr && arr[i]) ? { ...arr[i] } : null);
+}
+
+function startGame(color, loadData = null) {
+  const startX = loadData && typeof loadData.playerX === "number" ? loadData.playerX : SPAWN_X;
+  const startColor = loadData && loadData.playerColor ? loadData.playerColor : color;
+
   player = {
-    x: 260,
-    y: groundHeightAt(260) - 40,
+    x: startX,
+    y: groundHeightAt(startX) - 40,
     w: 20,
     h: 40,
     vx: 0,
     vy: 0,
     onGround: false,
     facing: 1,
-    color,
+    color: startColor,
     walkCycle: 0,
     jumpsUsed: 0,
     dashing: false,
+    sprinting: false,
   };
 
   loadedChunks.clear();
   collectedGemIds.clear();
+  if (loadData && Array.isArray(loadData.collectedGemIds)) {
+    for (const id of loadData.collectedGemIds) collectedGemIds.add(id);
+  }
   platforms = [];
   trees = [];
   gems = [];
@@ -683,35 +1003,64 @@ function startGame(color) {
   cameraY = player.y + player.h / 2 - window.innerHeight * CAMERA_Y_BIAS;
   particles = [];
   prevKeys = {};
+  prevLeftShiftHeld = false;
+  leftShiftHeld = false;
+  rightShiftHeld = false;
+  dragTargets = [];
+  mouseIsDown = false;
   game.running = true;
-  game.time = 0;
-  game.distanceMax = 0;
+  game.time = loadData && typeof loadData.gameTime === "number" ? loadData.gameTime : 0;
+  game.distanceMax = loadData && typeof loadData.distanceMax === "number" ? loadData.distanceMax : 0;
   game.triggeredLines = new Set();
   game.gemsCollected = 0;
 
-  inventory.pack = Array.from({ length: PACK_SIZE }, () => null);
-  inventory.crafting = Array.from({ length: 9 }, () => null);
+  inventory.pack = loadData ? normalizeSlotArray(loadData.inventoryPack, PACK_SIZE) : Array.from({ length: PACK_SIZE }, () => null);
+  inventory.crafting = loadData ? normalizeSlotArray(loadData.inventoryCrafting, 9) : Array.from({ length: 9 }, () => null);
   inventory.result = null;
+  checkCraftingRecipe();
   selectedSlot = null;
-  updateGemHUD();
+  updateHUD();
 
   lastTS = performance.now();
   requestAnimationFrame(loop);
 }
 
-/* ---------- input ---------- */
+/* ---------- input ----------
+   Left Shift and Right Shift both report key === "Shift", so they can only
+   be told apart via e.code. Left Shift stays bound to the double jump;
+   Right Shift is dedicated to sprinting so the two never fight each other. */
+let leftShiftHeld = false;
+let rightShiftHeld = false;
+
 window.addEventListener("keydown", (e) => {
   keys[e.key.toLowerCase()] = true;
+  if (e.code === "ShiftLeft") leftShiftHeld = true;
+  if (e.code === "ShiftRight") rightShiftHeld = true;
   if (e.key.toLowerCase() === "i") toggleInventory();
   if (["arrowup", "arrowdown", " "].includes(e.key.toLowerCase())) e.preventDefault();
 });
 window.addEventListener("keyup", (e) => {
   keys[e.key.toLowerCase()] = false;
+  if (e.code === "ShiftLeft") leftShiftHeld = false;
+  if (e.code === "ShiftRight") rightShiftHeld = false;
+});
+// if the window loses focus mid-press (alt-tab, clicking a browser chrome
+// element), stuck keys used to keep the player moving/sprinting forever
+window.addEventListener("blur", () => {
+  for (const k in keys) keys[k] = false;
+  leftShiftHeld = false;
+  rightShiftHeld = false;
+  mouseIsDown = false;
+  dragTargets = [];
 });
 
 const inventoryPanel = document.getElementById("inventory-panel");
 document.getElementById("close-inventory").addEventListener("click", toggleInventory);
 document.getElementById("crafting-result-slot").addEventListener("click", onResultClick);
+document.getElementById("save-game-btn").addEventListener("click", () => {
+  if (!game.running) return;
+  saveGame();
+});
 
 function toggleInventory() {
   inventoryPanel.classList.toggle("hidden");
@@ -721,8 +1070,9 @@ function toggleInventory() {
   }
 }
 
-function updateGemHUD() {
+function updateHUD() {
   document.getElementById("gem-count").textContent = totalOf("emerald_fragment");
+  document.getElementById("enchanted-count").textContent = totalOf("enchanted_emerald");
 }
 
 /* ---------- ambient text ---------- */
@@ -756,20 +1106,23 @@ function update(dt) {
   const left = keys["a"] || keys["arrowleft"];
   const right = keys["d"] || keys["arrowright"];
   const jumpHeld = keys["w"] || keys["arrowup"] || keys[" "];
-  const shiftHeld = keys["shift"];
   const dashHeld = keys["s"] || keys["arrowdown"];
 
   const jumpPressed =
     jumpHeld &&
     !(prevKeys["w"] || prevKeys["arrowup"] || prevKeys[" "]);
-  const doubleJumpPressed = shiftHeld && !prevKeys["shift"];
+  const doubleJumpPressed = leftShiftHeld && !prevLeftShiftHeld;
   const dashPressed = dashHeld && !(prevKeys["s"] || prevKeys["arrowdown"]);
 
+  const sprinting = rightShiftHeld && (left !== right);
+  player.sprinting = sprinting;
+  const moveSpeed = sprinting ? SPRINT_SPEED : MOVE_SPEED;
+
   if (left && !right) {
-    player.vx = -MOVE_SPEED;
+    player.vx = -moveSpeed;
     player.facing = -1;
   } else if (right && !left) {
-    player.vx = MOVE_SPEED;
+    player.vx = moveSpeed;
     player.facing = 1;
   } else {
     player.vx = 0;
@@ -831,9 +1184,10 @@ function update(dt) {
 
   if (player.dashing) spawnDashTrail();
 
-  if (player.vx !== 0 && player.onGround) player.walkCycle += dt * 10;
+  if (player.vx !== 0 && player.onGround) player.walkCycle += dt * (sprinting ? 16 : 10);
 
   prevKeys = { ...keys };
+  prevLeftShiftHeld = leftShiftHeld;
 
   // camera follow — no clamp, the world streams in both directions.
   // Vertical follow keeps the ground in view regardless of terrain height
@@ -847,6 +1201,10 @@ function update(dt) {
   // stream chunks in/out around the player, Minecraft-style
   ensureChunksAround(player.x);
 
+  // track the furthest the player has ever wandered from the fixed spawn
+  // point — this was previously declared but never actually updated
+  game.distanceMax = Math.max(game.distanceMax, Math.abs(player.x - SPAWN_X));
+
   // gem pickup — goes into the pack as an Emerald Fragment
   for (const g of gems) {
     if (g.collected) continue;
@@ -856,7 +1214,7 @@ function update(dt) {
       g.collected = true;
       collectedGemIds.add(g.id);
       addItemToPack("emerald_fragment", 1);
-      updateGemHUD();
+      updateHUD();
       if (!inventoryPanel.classList.contains("hidden")) renderInventory();
     }
   }
@@ -950,9 +1308,9 @@ function skyState(t) {
   const moonFrac = ((moonAngle / (Math.PI * 2)) % 1 + 1) % 1;
 
   const nightTop = [7, 12, 20];
-  const dayTop = [50, 88, 128];
+  const dayTop = [78, 138, 196]; // brighter, more saturated sky blue at noon
   const nightBottom = [18, 26, 40];
-  const dayBottom = [140, 176, 182];
+  const dayBottom = [186, 220, 218]; // brighter hazy horizon
   const lerp = (a, b) => Math.round(a + (b - a) * cyclePos);
   const top = `rgb(${lerp(nightTop[0], dayTop[0])},${lerp(nightTop[1], dayTop[1])},${lerp(nightTop[2], dayTop[2])})`;
   const bottom = `rgb(${lerp(nightBottom[0], dayBottom[0])},${lerp(nightBottom[1], dayBottom[1])},${lerp(nightBottom[2], dayBottom[2])})`;
@@ -1025,7 +1383,7 @@ function drawSun(sun) {
 
   // solid core
   ctx.globalCompositeOperation = "source-over";
-  ctx.fillStyle = "#fff6df";
+  ctx.fillStyle = "#ffffff";
   ctx.beginPath();
   ctx.arc(x, y, 17, 0, Math.PI * 2);
   ctx.fill();
@@ -1079,8 +1437,8 @@ function render() {
   drawSun(sky.sun);
 
   // distant mountains — solid parallax silhouettes, smooth ridgeline (no jagged abs-sine glitching)
-  drawMountains(0.15, 0.64, lerpColor("#0a131f", "#4a6478", sky.cyclePos), 0.05);
-  drawMountains(0.3, 0.72, lerpColor("#060d16", "#33465a", sky.cyclePos), 0.09);
+  drawMountains(0.15, 0.64, lerpColor("#0a131f", "#5c7c92", sky.cyclePos), 0.05);
+  drawMountains(0.3, 0.72, lerpColor("#060d16", "#3f566e", sky.cyclePos), 0.09);
 
   drawClouds(sky.cyclePos);
 
@@ -1099,10 +1457,12 @@ function render() {
 
   ctx.restore();
 
-  // vignette
+  // vignette — eased back a bit during daylight so noon actually reads as bright,
+  // while keeping the fuller moody vignette at night
+  const vignetteStrength = 0.35 - 0.12 * sky.cyclePos;
   const vg = ctx.createRadialGradient(w / 2, h / 2, h * 0.3, w / 2, h / 2, h * 0.9);
   vg.addColorStop(0, "rgba(0,0,0,0)");
-  vg.addColorStop(1, "rgba(0,0,0,0.35)");
+  vg.addColorStop(1, `rgba(0,0,0,${vignetteStrength})`);
   ctx.fillStyle = vg;
   ctx.fillRect(0, 0, w, h);
 }
@@ -1117,7 +1477,7 @@ function drawMountains(parallaxX, baseYFrac, color, verticalParallax) {
   ctx.fillStyle = color;
   ctx.beginPath();
   ctx.moveTo(0, h);
-  const step = 60;
+  const step = 22; // finer sampling = smoother ridgeline instead of a faceted low-poly silhouette
   for (let x = -step; x <= w + step; x += step) {
     const worldX = x - offsetX;
     // smooth rolling ridge, no absolute-value kinks (that jaggedness read as "glitchy fog")
@@ -1133,22 +1493,23 @@ function drawMountains(parallaxX, baseYFrac, color, verticalParallax) {
 function drawGround(dayAmount) {
   const startX = cameraX - 50;
   const endX = cameraX + window.innerWidth + 50;
+  const step = 5; // finer sampling of the terrain curve = smoother silhouette, no more faceted-looking hills
   ctx.beginPath();
   const bottom = cameraY + window.innerHeight + 300; // always past the visible area, whatever the camera height
   ctx.moveTo(startX, bottom);
-  for (let x = startX; x <= endX; x += 12) {
+  for (let x = startX; x <= endX; x += step) {
     ctx.lineTo(x, groundHeightAt(x));
   }
   ctx.lineTo(endX, bottom);
   ctx.closePath();
 
-  const grassColor = lerpColor("#0f2a22", "#1e4a3a", dayAmount);
+  const grassColor = lerpColor("#0f2a22", "#2b5645", dayAmount);
   ctx.fillStyle = grassColor;
   ctx.fill();
 
   // thin glowing edge along the surface
   ctx.beginPath();
-  for (let x = startX; x <= endX; x += 12) {
+  for (let x = startX; x <= endX; x += step) {
     const y = groundHeightAt(x);
     if (x === startX) ctx.moveTo(x, y);
     else ctx.lineTo(x, y);
@@ -1279,7 +1640,7 @@ function drawPlatforms() {
       const seed = Math.sin((p.x + i * 13.7) * 4.11) * 10000;
       const jy = (seed - Math.floor(seed)) * (p.h - 6);
       ctx.beginPath();
-      ctx.arc(sx, p.y + 3 + jy * 0, 1.6, 0, Math.PI * 2);
+      ctx.arc(sx, p.y + 3 + jy, 1.6, 0, Math.PI * 2);
       ctx.fill();
     }
 
@@ -1351,6 +1712,8 @@ function drawPlayer() {
   const walking = player.onGround && player.vx !== 0;
   const hop = walking ? Math.abs(Math.sin(player.walkCycle)) * 2 : 0;
   ctx.translate(0, -hop);
+
+  if (player.sprinting && walking) ctx.rotate(-0.14 * player.facing);
 
   const stretch = player.dashing ? 1.22 : 1;
   ctx.scale(1 / Math.sqrt(stretch), stretch);
