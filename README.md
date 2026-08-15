@@ -17,4 +17,10 @@ A web-based 2D adventure game focused entirely on exploration, atmosphere, and m
 
 ## Windows Desktop App (Electron)
 
-While built ground-up with web technologies, an **Electron-based Windows application** will be officially released as soon as the game hits its **first Alpha stage**.
+While built ground-up with web technologies, an **Electron-based Windows application** has been officially released on the game's **first Alpha**.
+
+---
+
+## Adroid Mobile Application (Capacitor)
+
+As we know, the game is in early stage and the game **Will Not Have Any "Latest Release" in 2026**. As for the android application, if God wills, we will officially release the android app as soon as the game hits its **LASTEST RELEASE**.
