@@ -8,7 +8,7 @@ A web-based 2D adventure game focused entirely on exploration, atmosphere, and m
 
 ## Key Features
 
-* **Exploration over Competition:** No time limits, or strict winning conditions. Just pure atmospheric discovery or maybe Try to beat your High Score?
+* **Exploration over Competition:** No time limits or strict winning conditions. Just pure atmospheric discovery, or maybe try to beat your High Score?
 * **2D Platforming World:** Fluid traversal and world interaction.
 * **Player Customization:** Personalize your character before setting out.
 * **Expanded Inventory System:** A feature-rich inventory structure designed to support deep discovery (more details kept hidden until release!).
@@ -21,6 +21,6 @@ While built ground-up with web technologies, an **Electron-based Windows applica
 
 ---
 
-## Adroid Mobile Application (Capacitor)
+## Android Mobile Application (Capacitor)
 
-As we know, the game is in early stage and the game **Will Not Have Any "Latest Release" in 2026**. As for the android application, if God wills, we will officially release the android app as soon as the game hits its **LASTEST RELEASE**.
+As we know, the game is in an early stage, and **there will be no "Latest Release" in 2026**. As for the Android application, if God wills, we will officially release the Android app as soon as the game hits its **LASTEST RELEASE**.
