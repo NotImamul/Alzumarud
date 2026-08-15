@@ -32,15 +32,20 @@
       </div>
     </div>
 
+    <p class="continue-hint" id="continue-hint"></p>
+
     <button id="begin-btn" class="begin-btn">Begin Walking</button>
 
     <div class="controls-hint">
       <span><em>A</em> <em>D</em> — move</span>
       <span><em>Space</em> — rise</span>
-      <span><em>Shift</em> — rise again, mid-air</span>
+      <span><em>L-Shift</em> — rise again, mid-air</span>
       <span><em>S</em> — dive</span>
+      <span><em>R-Shift</em> — sprint</span>
       <span><em>I</em> — pack</span>
     </div>
+
+    <button id="reset-data-btn" class="reset-data-btn">Reset Game Data</button>
   </div>
 </section>
 
@@ -53,17 +58,25 @@
       <svg width="14" height="14" viewBox="0 0 14 14"><polygon points="7,0 14,5 11,14 3,14 0,5" fill="var(--emerald)"/></svg>
       <span id="gem-count">0</span>
     </div>
+    <div class="hud-item" id="hud-enchanted">
+      <svg width="14" height="14" viewBox="0 0 14 14"><polygon points="7,0 13,4 11,14 3,14 1,4" fill="var(--violet-bright)"/></svg>
+      <span id="enchanted-count">0</span>
+    </div>
   </div>
 
   <div class="ambient-text" id="ambient-text"></div>
 
-  <div class="controls-map" aria-hidden="true">
-    <p class="controls-map-title">controls</p>
-    <div class="controls-map-row"><span class="key">A</span><span class="key">D</span><span class="action">move</span></div>
-    <div class="controls-map-row"><span class="key wide">SPACE</span><span class="action">jump</span></div>
-    <div class="controls-map-row"><span class="key wide">SHIFT</span><span class="action">double jump</span></div>
-    <div class="controls-map-row"><span class="key">S</span><span class="action">dive</span></div>
-    <div class="controls-map-row"><span class="key">I</span><span class="action">pack</span></div>
+  <div class="side-panel">
+    <div class="controls-map" aria-hidden="true">
+      <p class="controls-map-title">controls</p>
+      <div class="controls-map-row"><span class="key">A</span><span class="key">D</span><span class="action">move</span></div>
+      <div class="controls-map-row"><span class="key wide">SPACE</span><span class="action">jump</span></div>
+      <div class="controls-map-row"><span class="key wide">L-SHIFT</span><span class="action">double jump</span></div>
+      <div class="controls-map-row"><span class="key">S</span><span class="action">dive</span></div>
+      <div class="controls-map-row"><span class="key wide">R-SHIFT</span><span class="action">sprint</span></div>
+      <div class="controls-map-row"><span class="key">I</span><span class="action">pack</span></div>
+    </div>
+    <button id="save-game-btn" class="save-game-btn">Save Game</button>
   </div>
 
   <!-- ============ INVENTORY / CRAFTING PANEL ============ -->
@@ -77,6 +90,7 @@
       <div class="pack-section">
         <p class="section-label">pack</p>
         <div class="slot-grid" id="pack-grid"></div>
+        <p class="inv-tip">Click a stack to pick it up, then drag across empty slots to split it evenly. Double-click a stack to gather matching items into it.</p>
       </div>
 
       <div class="crafting-section">
