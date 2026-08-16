@@ -24,3 +24,12 @@ While built ground-up with web technologies, an **Electron-based Windows applica
 ## Android Mobile Application (Capacitor)
 
 As we know, the game is in an early stage, and **there will be no "Latest Release" in 2026**. As for the Android application, if God wills, we will officially release the Android app as soon as the game hits its **LASTEST RELEASE**.
+
+---
+
+## Changelog
+
+* v0.0.1-alpha: Broken but works. Had issues with inventory, crafting, and other bugs. 
+* v0.1.0-beta: All issues in v0.0.1-Alpha but few bugs might still be there.
+* v0.2.0-beta: Will add more crafting recipes and fix other issues.
+ 
