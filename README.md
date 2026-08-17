@@ -37,5 +37,6 @@ While built ground-up with web technologies, an **Electron-based Linux deb or rp
 
 * v0.0.1-alpha: Broken but works. Had issues with inventory, crafting, and other bugs. 
 * v0.1.0-beta: All issues in v0.0.1-Alpha but few bugs might still be there.
-* v0.2.0-beta: Will have SFX and BG music and fix other issues. (🚧 under dev)
+* v0.2.0-beta: SFX and BG music added and fix other issues. *if you don't  the the music please contact owner*
+* v0.3.1-beta: Will be the biggest beta update. (NO SPOILERS), (🚧 under dev.)
  
