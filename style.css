@@ -252,6 +252,25 @@ html,body{
   letter-spacing:0.05em;
 }
 
+.mute-btn{
+  pointer-events:auto; /* .hud disables clicks for its passive readouts — this button opts back in */
+  display:flex; align-items:center; justify-content:center;
+  width:32px; height:32px;
+  background:rgba(7,12,20,0.55);
+  border:1px solid rgba(46,230,166,0.25);
+  border-radius:2px;
+  backdrop-filter:blur(6px);
+  font-size:0.95rem;
+  line-height:1;
+  cursor:pointer;
+  color:var(--bone);
+  transition:border-color 0.2s ease, background 0.2s ease;
+}
+.mute-btn:hover{
+  border-color:var(--emerald);
+  background:rgba(46,230,166,0.12);
+}
+
 .ambient-text{
   position:absolute;
   bottom:12%;
