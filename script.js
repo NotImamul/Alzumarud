@@ -11,6 +11,50 @@ const state = {
   playerColor: "#2ee6a6",
 };
 
+/* ---------- audio ----------
+   AudioManager (audio.js) must be loaded before this file. The context
+   itself can only be created inside a real user-gesture handler, so we
+   unlock it on the very first interaction anywhere on the page, then
+   start/stop the ambient soundscape specifically around gameplay
+   (see the begin-btn / menu-return-btn handlers below).
+
+   If audio.js somehow failed to load, `AudioManager` won't exist — fall
+   back to a silent no-op object with the same method names so nothing
+   elsewhere in this file has to guard every single audio call, and the
+   game keeps working with no sound rather than crashing on load. */
+const audio =
+  typeof AudioManager !== "undefined"
+    ? new AudioManager()
+    : {
+        unlock() {},
+        start() {},
+        stop() {},
+        setMusicVolume() {},
+        setSFXVolume() {},
+        setMuted() {},
+        toggleMute() { return true; },
+        playJump() {},
+        playDoubleJump() {},
+        playDive() {},
+        playLand() {},
+        playFootstep() {},
+        updateProximityAudio() {},
+      };
+
+function unlockAudioOnce() {
+  audio.unlock();
+  window.removeEventListener("pointerdown", unlockAudioOnce);
+  window.removeEventListener("keydown", unlockAudioOnce);
+}
+window.addEventListener("pointerdown", unlockAudioOnce);
+window.addEventListener("keydown", unlockAudioOnce);
+
+const muteBtn = document.getElementById("mute-btn");
+muteBtn.addEventListener("click", () => {
+  const muted = audio.toggleMute();
+  muteBtn.textContent = muted ? "🔇" : "🔊";
+});
+
 const previewCanvas = document.getElementById("preview-canvas");
 const pctx = previewCanvas.getContext("2d");
 
@@ -326,12 +370,15 @@ document.getElementById("begin-btn").addEventListener("click", () => {
   document.getElementById("start-screen").classList.add("hidden");
   document.getElementById("game-screen").classList.remove("hidden");
   startGame(state.playerColor, loadData);
+  audio.unlock(); // in case this is somehow the very first interaction (unlockAudioOnce should have already fired)
+  audio.start();
 });
 
 document.getElementById("menu-return-btn").addEventListener("click", () => {
   document.getElementById("game-screen").classList.add("hidden");
   document.getElementById("start-screen").classList.remove("hidden");
   if (game.running) game.running = false;
+  audio.stop();
   refreshContinueHint(); // reflect anything saved during this session
 });
 
@@ -1132,13 +1179,16 @@ function update(dt) {
     player.vy = -JUMP_VELOCITY;
     player.onGround = false;
     player.jumpsUsed = 1;
+    audio.playJump();
   } else if (doubleJumpPressed && !player.onGround && player.jumpsUsed < 2) {
     player.vy = -DOUBLE_JUMP_VELOCITY;
     player.jumpsUsed = 2;
     spawnJumpBurst();
+    audio.playDoubleJump();
   } else if (dashPressed && !player.onGround && !player.dashing) {
     player.vy = DASH_VELOCITY;
     player.dashing = true;
+    audio.playDive();
   }
 
   player.vy += GRAVITY * dt;
@@ -1167,9 +1217,24 @@ function update(dt) {
     }
   }
 
-  // ground collision
+  // ground collision — snaps down onto the terrain, but naive "did gravity
+  // pull the feet at or below the curve yet" collision breaks on downhill
+  // slopes: groundHeightAt() is a continuous curve, and at walk/sprint
+  // speed the ground can drop several px per frame while one frame of
+  // gravity alone only pulls you down a fraction of a px. The result was
+  // the player losing ground contact for a frame, landing again, losing
+  // it again — a rapid onGround flicker that read as "vibrating," reset
+  // jumpsUsed unpredictably, and (now) retriggered the landing sound
+  // dozens of times a second. Fix: if we were already on the ground and
+  // we're still within a small tolerance of the surface, stick to the
+  // slope directly rather than waiting for gravity to physically close
+  // that gap — this is standard "ground adherence" in platformers.
   const gy = groundHeightAt(player.x);
-  if (player.y + player.h >= gy) {
+  const GROUND_SNAP = 30; // px — comfortably covers the steepest slope drop in one frame at max sprint + worst-case frame time, while staying well under a platform's minimum 100px clearance so it can never snap through/onto one
+  const feetY2 = player.y + player.h;
+  const touchingGround = feetY2 >= gy;
+  const stickingToSlope = wasOnGround && player.vy >= 0 && feetY2 >= gy - GROUND_SNAP;
+  if (touchingGround || stickingToSlope) {
     player.y = gy - player.h;
     player.vy = 0;
     player.onGround = true;
@@ -1180,11 +1245,21 @@ function update(dt) {
   if (player.onGround && !wasOnGround) {
     if (player.dashing) spawnDashImpact();
     player.dashing = false;
+    audio.playLand();
   }
 
   if (player.dashing) spawnDashTrail();
 
-  if (player.vx !== 0 && player.onGround) player.walkCycle += dt * (sprinting ? 16 : 10);
+  // footsteps — one per half-swing of the walk cycle, so they land roughly
+  // on each foot rather than firing continuously every frame
+  if (player.vx !== 0 && player.onGround) {
+    const prevWalkCycle = player.walkCycle;
+    player.walkCycle += dt * (sprinting ? 16 : 10);
+    const STEP_PERIOD = Math.PI;
+    if (Math.floor(player.walkCycle / STEP_PERIOD) !== Math.floor(prevWalkCycle / STEP_PERIOD)) {
+      audio.playFootstep(sprinting ? "sprint" : "walk");
+    }
+  }
 
   prevKeys = { ...keys };
   prevLeftShiftHeld = leftShiftHeld;
@@ -1206,11 +1281,14 @@ function update(dt) {
   game.distanceMax = Math.max(game.distanceMax, Math.abs(player.x - SPAWN_X));
 
   // gem pickup — goes into the pack as an Emerald Fragment
+  let nearestGemDist = Infinity;
   for (const g of gems) {
     if (g.collected) continue;
     const dx = g.x - player.x;
     const dy = g.y - (player.y + player.h / 2);
-    if (Math.hypot(dx, dy) < 34) {
+    const dist = Math.hypot(dx, dy);
+    if (dist < nearestGemDist) nearestGemDist = dist;
+    if (dist < 34) {
       g.collected = true;
       collectedGemIds.add(g.id);
       addItemToPack("emerald_fragment", 1);
@@ -1218,6 +1296,9 @@ function update(dt) {
       if (!inventoryPanel.classList.contains("hidden")) renderInventory();
     }
   }
+  // proximity shimmer — hums louder and a touch higher as an uncollected
+  // fragment gets near; silent again once nothing is close by
+  audio.updateProximityAudio(nearestGemDist);
 
   // ambient narrative triggers by distance
   const dist = Math.floor(Math.abs(player.x) / 700);
