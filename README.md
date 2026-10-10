@@ -23,7 +23,7 @@ While built ground-up with web technologies, an **Electron-based Windows applica
 
 ## Android Mobile Application (Capacitor)
 
-As we know, the game is in an early stage, and **there will be no "Latest Release" in 2026**. As for the Android application, if God wills, we will officially release the Android app as soon as the game hits its **FRIST RELEASE**.
+As we know, the game is in beta stage, and **there will be no "Latest Release" in 2026**. As for the Android application, if God wills, we will officially release the Android app as soon as the game hits its **FRIST RELEASE**.
 
 ---
 
@@ -38,5 +38,7 @@ While built ground-up with web technologies, an **Electron-based Linux deb or rp
 * v0.0.1-alpha: Broken but works. Had issues with inventory, crafting, and other bugs. 
 * v0.1.0-beta: All issues in v0.0.1-Alpha but few bugs might still be there.
 * v0.2.0-beta: SFX and BG music added and fix other issues. *if you don't  the the music please contact owner*
-* v0.3.1-beta: Will be the biggest beta update. (NO SPOILERS), (🚧 under dev.)
- 
+* ~~v0.3.1-beta: Will be the biggest beta update.~~
+* v0.7.4-beta: The biggest update, with complete overhaul of the game and tons of new materials and fixed almost all found bugs. and now have recipe book. (🚧 under dev.) (no release yet due to security reasons)
+
+## POWERED BY PENCILSHIFT STUDIO.
