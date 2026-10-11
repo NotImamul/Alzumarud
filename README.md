@@ -24,6 +24,7 @@ While built ground-up with web technologies, an **Electron-based Windows applica
 ## Android Mobile Application (Capacitor)
 
 As we know, the game is in beta stage, and **there will be no "Latest Release" in 2026**. As for the Android application, if God wills, we will officially release the Android app as soon as the game hits its **FRIST RELEASE**.
+ANDROID WEB: TBA
 
 ---
 
